@@ -14,7 +14,7 @@ export const firebaseConfig = {
   projectId: "csmsuniben",
   storageBucket: "csmsuniben.appspot.com",
   messagingSenderId: "200030486685",
-  appId: "1:200030486685:web:af69a2ddd74cb6511ad474",
+  appId: "1:200030486685:web:20a12082ace747391ad474",
 };
 
 // Initialize Firebase but only on client
@@ -22,3 +22,5 @@ const app = isServerSide ? null : initializeApp(firebaseConfig);
 export const firestore = isServerSide ? null : getFirestore(app);
 export const storage = isServerSide ? null : getStorage(app);
 export const auth = isServerSide ? null : getAuth(app);
+
+export const firestoreNS = "";

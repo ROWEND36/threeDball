@@ -90,7 +90,8 @@ function createFormField(name, meta, { disabled } = {}) {
       maxWidth: meta.type === "number" ? "15em" : "none",
       width: meta.type === "number" ? "0" : undefined,
       flexGrow: 1,
-      mx: 4,
+      ml: 4,
+      mr: 4,
     },
   };
   switch (meta.type) {
@@ -125,7 +126,7 @@ function createFormField(name, meta, { disabled } = {}) {
       return (
         <FormField
           {...commonProps}
-          sx={{ minWidth: "10em", flexGrow: 1, mx: 1, maxWidth: "15em" }}
+          sx={{ minWidth: "10em", flexGrow: 1, mr: 1, ml: 4, maxWidth: "15em" }}
           pattern={PATTERNS[meta.type].re}
           {...collectInputProps(meta)}
           onInvalid={(e) => {
@@ -140,7 +141,7 @@ function createFormField(name, meta, { disabled } = {}) {
       return (
         <FormImage
           {...commonProps}
-          sx={{ minWidth: "15em", mx: 1, maxWidth: "30em" }}
+          sx={{ minWidth: "15em", mr: 1, ml: 4, maxWidth: "30em" }}
         />
       );
     case "ref":

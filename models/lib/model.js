@@ -6,7 +6,7 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { firestore } from "@/logic/firebase_init";
+import { firestoreNS, firestore } from "@/logic/firebase_init";
 import { InvalidState, ItemDoesNotExist, checkError } from "./errors";
 import getModelTypeInfo from "./model_type_info";
 import pick from "@/utils/pick";
@@ -16,6 +16,8 @@ import isPureObject from "@/utils/isPureObject";
 import typeOf from "@/utils/typeof";
 import hasProp from "@/utils/hasProp";
 import { isUpdateValue } from "./update_value";
+import { None } from "@/utils/none";
+import { getItemFromStore } from "./item_store";
 /**
  * (new|(?<!Model )extends) \w*Model\b
  */
@@ -24,13 +26,23 @@ import { isUpdateValue } from "./update_value";
  */
 export const noFirestore = firestore === null;
 export const USES_EXACT_IDS = "!uses-exact-ids";
+
+const collections = new Map();
+export const getCollection = (key) => {
+  return collections.get(key);
+};
 /**
  * @template T
  * @typedef {{new(): T}} Class
  */
 /**
+ * @template T
+ * @typedef {Pick<T, { [K in keyof T]: T[K] extends Function ? never : K }[keyof T]>} Data
+ */
+/**
  * @template {Item} T
  */
+
 export class Model {
   _Item;
   /**
@@ -40,12 +52,13 @@ export class Model {
    */
   constructor(_collectionID, ItemClass = Item, meta) {
     this._ref = noFirestore
-      ? { path: _collectionID }
-      : collection(firestore, _collectionID);
+      ? { path: firestoreNS + _collectionID }
+      : collection(firestore, firestoreNS + _collectionID);
     this._Item = ItemClass ?? Item;
     this.Meta = this.Meta ?? getModelTypeInfo(this, meta);
     this.converter = Model.converter(this);
     global[_collectionID + "Model"] = this;
+    collections.set(this.uniqueName(), this);
   }
   static converter(model) {
     return {
@@ -94,6 +107,7 @@ export class Model {
   /**
    * @param {string} id
    * @param {(item: T, txn: Txn)=> Promise<void>} init
+   * @param {Txn} txn
    * @returns {Promise<T>}
    */
 
@@ -101,29 +115,35 @@ export class Model {
     id,
     init = async (item, txn) => {
       if (item.isLocalOnly()) await item.save(txn);
-    }
+    },
+    txn
   ) {
     if (!this.Meta[USES_EXACT_IDS]) {
       throw new InvalidState(
         this.uniqueName() + " is not configured to use exact ids."
       );
     }
-    return Txn.run(async (txn) => {
+    const cb = async (_txn) => {
       //TODO - this can lead to unnecessary transaction retries
       const m = new this._Item(this.ref(id), true, this);
+      if (noFirestore) return m;
       try {
-        await m.load(txn);
+        await m.load(_txn);
       } catch (e) {
         checkError(e, ItemDoesNotExist);
       }
-      if (!m.isLocalOnly()) txn.ignorePreviousReads();
+      if (!txn && !m.isLocalOnly()) _txn.ignorePreviousReads();
       m.onCreate();
-      await init(m, txn);
-      txn.onCommit(() => {
-        if (m.isLocalOnly()) m._isCreated = false; //Prevent saving outside of this transaction
+      await init(m, _txn);
+      _txn.onCommit(() => {
+        // Prevent saving outside of this transaction
+        // Subject to race conditions only if init does stuff outside the transaction
+        if (m.isLocalOnly()) m._isCreated = false;
       });
       return m;
-    });
+    };
+    if (txn) return cb(txn);
+    return Txn.run(cb);
   }
   /**
    * @returns {T}
@@ -143,7 +163,23 @@ export class Model {
       : doc(this._ref, ...id);
   }
   uniqueName() {
-    return this._ref.path;
+    return this._ref.path.substring(firestoreNS.length);
+  }
+  fields() {
+    return Object.keys(this.Meta).filter((e) => e[0] !== "!");
+  }
+  /**
+   *
+   * @param {String} id
+   * @returns {Promise<T>}
+   */
+  async preview(id) {
+    let item = getItemFromStore(this.ref(id));
+    if (!item) {
+      item = this.item(id);
+    }
+    if (!item._isLoaded) await item.load();
+    return item;
   }
 }
 
@@ -152,6 +188,7 @@ export class Model {
  * @property {import("firebase/firestore").DocumentReference} _ref
  */
 export class Item {
+  static strictKeys = true;
   /*
     An item can only be created on the server if one of two conditions are met.
     1. #isLocalOnly is established either by create of by getOrCreate
@@ -197,22 +234,11 @@ export class Item {
     Used for creating and overwriting documents in firestore.
   */
   async save(txn) {
-    if (noFirestore) throw InvalidState("No Firestore!!");
+    if (noFirestore) throw new InvalidState("No Firestore!!");
     if (!this._isCreated)
-      throw InvalidState("Cannot save item that is not initialized.");
+      throw new InvalidState("Cannot save item that is not initialized.");
     if (this.#isLocalOnly) {
-      // We add merge:true here to handle Metadata and SchoolData's unique case (non-unique uids).
-      // Might refactor out later
-      if (txn) {
-        await txn.set(this._ref, this.data(), { merge: true });
-        txn.onCommit(() => {
-          this.#isLocalOnly = false;
-        });
-      } else {
-        console.trace("Setting...");
-        await setDoc(this._ref, this.data(), { merge: true });
-        this.#isLocalOnly = false;
-      }
+      await this._create(txn);
     } else await this._update(txn, this.data());
   }
   /*
@@ -221,22 +247,37 @@ export class Item {
   /**
    *
    * @param {Record<keyof ThisParameterType, any>} data
-   * @param {*} txn
+   * @param {Txn} txn
    */
   async set(data, txn) {
-    if (noFirestore) throw InvalidState("No Firestore!!");
+    if (noFirestore) throw new InvalidState("No Firestore!!");
 
     //needed especially to trigger update transactions
     this.setData(data);
     if (this.#isLocalOnly) {
       await this.save(txn);
-    } else await this._update(txn, data);
+    } else {
+      await this._update(txn, data);
+    }
   }
-
+  async _create(txn) {
+    // We add merge:true here to handle Metadata and SchoolData's unique case (non-unique uids).
+    // Might refactor out later
+    if (txn) {
+      await txn.set(this._ref, this.data(), { merge: true });
+      txn.onCommit(() => {
+        this.#isLocalOnly = false;
+      });
+    } else {
+      await setDoc(this._ref, this.data(), { merge: true });
+      this.#isLocalOnly = false;
+    }
+  }
   async _update(txn, data) {
-    if (noFirestore) throw InvalidState("No Firestore!!");
+    if (noFirestore) throw new InvalidState("No Firestore!!");
+
     if (!this._isCreated)
-      throw InvalidState("Cannot save item that is not initialized.");
+      throw new InvalidState("Cannot save item that is not initialized.");
     if (this._useFastUpdate) {
       if (!txn)
         throw new InvalidState("Fast updates can only be done in transactions");
@@ -252,7 +293,7 @@ export class Item {
   // if restoration was made possible by marking it as local only,
   // each client would be able to restore potentially conflicting versions of the same document.
   async delete(txn) {
-    if (noFirestore) throw InvalidState("No Firestore!!");
+    if (noFirestore) throw new InvalidState("No Firestore!!");
     if (txn) txn.delete(this._ref);
     else await deleteDoc(this._ref);
   }
@@ -263,63 +304,63 @@ export class Item {
     return Object.assign({}, this);
   }
   setData(d) {
-    let copy;
-    const isCompatible = (key) => {
-      const val = d[key],
-        valueType = typeOf(val),
-        expectedType = typeOf(this[key]);
-      if (valueType === expectedType) return true;
-      if (!copy) copy = Object.assign({}, d);
-      if (valueType === "timestamp" && expectedType === "date") {
-        copy[key] = val.toDate();
-      } else if (
-        isUpdateValue(val) &&
-        (expectedType === "array" ||
-          expectedType === "number" ||
-          expectedType === "date")
-      ) {
-        return true; //Allow this for now.
-      } else if (
-        valueType === "string" &&
-        expectedType === "number" &&
-        !isNaN(val)
-      ) {
-        copy[key] = Number(val);
-        return true;
-      } else if (valueType === "number" && expectedType === "date") {
-        copy[key] = new Date(val);
-      } else if (
-        valueType === "string" &&
-        expectedType === "date" &&
-        !Number.isNaN(Date.parse(val))
-      ) {
-        copy[key] = new Date(val);
-      } else {
-        console.warn(
-          "Ignored attempt to supply invalid data for " +
-            this.model()?.uniqueName?.() +
-            "." +
-            key +
-            " " +
-            expectedType +
-            " is not compatible with " +
-            valueType +
-            " value =",
-          val,
-          "."
-        );
-        return false;
-      }
-      return true;
-    };
-    // Run this first to obtain copy if necessary
-    const validKeys = Object.keys(this).filter(
-      (e) => hasProp(d, e) && isCompatible(e)
+    Object.keys(d ?? {}).forEach((e) => {
+      let m = this.validate(e, d[e]);
+      if (m !== undefined) this[e] = m;
+    });
+  }
+  validate(key, val) {
+    const valueType = typeOf(val);
+    const expectedType =
+      hasProp(this, key) || (key in this && this[key] !== {}[key])
+        ? typeOf(this[key])
+        : "unset";
+    if (valueType === expectedType) return val;
+    if (valueType === "null" && expectedType === "string") return "";
+    if (valueType === "timestamp" && expectedType === "date") {
+      return val.toDate();
+    }
+    if (expectedType === "unset" && !this.constructor.strictKeys) {
+      return val;
+    }
+    if (
+      isUpdateValue(val) &&
+      (expectedType === "array" ||
+        expectedType === "number" ||
+        expectedType === "date")
+    ) {
+      return val; //Allow this for now.
+    }
+    if (valueType === "string" && expectedType === "number" && !isNaN(val)) {
+      return Number(val);
+    }
+    if (valueType === "number" && expectedType === "date") {
+      return new Date(val);
+    }
+    if (
+      valueType === "string" &&
+      expectedType === "date" &&
+      !Number.isNaN(Date.parse(val))
+    ) {
+      return new Date(val);
+    }
+    console.warn(
+      "Ignored attempt to supply invalid data for " +
+        this.model()?.uniqueName?.() +
+        "." +
+        key +
+        " " +
+        expectedType +
+        " is not compatible with " +
+        valueType +
+        " value =",
+      val,
+      "."
     );
-    Object.assign(this, pick(copy ?? d, validKeys));
+    return undefined;
   }
   asQuery() {
-    return new DocumentQueryCursor(this._ref);
+    return new DocumentQueryCursor(this);
   }
   isLocalOnly() {
     return this.#isLocalOnly;
@@ -334,7 +375,7 @@ export class Item {
     return this._model;
   }
   uniqueName() {
-    return this._ref.path;
+    return this._ref.path.substring(firestoreNS.length);
   }
 
   getPropertyLabel(name) {
@@ -347,6 +388,11 @@ export class Item {
   onCreate() {
     this._isCreated = true;
   }
+
+  /**
+   * @param {Txn} txn
+   * @returns {Promise<Data<this>>}
+   */
   async read(txn) {
     if (txn) return (await txn.get(this._ref)).data();
     else return await this.asQuery().get();

@@ -10,6 +10,12 @@ import { mountStore } from "@/models/lib/item_store";
 import { useUpdate } from "react-use";
 import { ModelFormField } from "./ModelFormField";
 import { getDefaultValue } from "@/models/lib/model_type_info";
+import pick from "@/utils/pick";
+import { checkError } from "@/models/lib/errors";
+import { FirestoreError } from "firebase/firestore";
+import { FirebaseError } from "firebase/app";
+import { singular } from "@/utils/plural";
+import sentenceCase from "@/utils/sentenceCase";
 const FORM_SECTION = "!modelform-section";
 
 const ItemStoreContext = createContext();
@@ -41,6 +47,7 @@ export default function ModelForm({
 
   const itemStore = useRef();
   if (!itemStore.current) itemStore.current = mountStore();
+  const outerStore = useContext(ItemStoreContext);
   const update = useUpdate();
   useEffect(() => {
     if (!itemStore.current) {
@@ -52,15 +59,27 @@ export default function ModelForm({
       itemStore.current = null;
     };
   }, [update]);
+
   return (
-    <ItemStoreContext.Provider value={itemStore.current.keep}>
+    <ItemStoreContext.Provider
+      value={noSave && outerStore ? outerStore : itemStore.current.keep}
+    >
       <Form
-        key={item?.id?.()}
+        key={item?.id?.() ?? ""}
         onSubmit={async (data) => {
-          console.log({ data, update });
-          data = await prepareForUpload(data, meta);
-          if (!noSave) await item.set(data);
-          await onSubmit(data);
+          try {
+            data = await prepareForUpload(data, meta);
+            if (!noSave) await item.set(data);
+            await onSubmit(data);
+          } catch (e) {
+            checkError(e, FirebaseError);
+            console.error(e);
+            throw new Error(
+              e.code === "not-found"
+                ? "Server Error: One or more documents have been deleted since this operation started."
+                : "Unknown Server Error"
+            );
+          }
         }}
         initialValue={item ? prepareForRender(item.data(), meta) : None}
         {...props}
@@ -69,7 +88,7 @@ export default function ModelForm({
           children
         ) : (
           <>
-            <div className="flex flex-wrap justify-between">
+            <div className="flex flex-wrap justify-between -mx-4">
               <Typography
                 variant="body2"
                 color="text.disabled"
@@ -125,9 +144,16 @@ export default function ModelForm({
  * @param {import("@/models/lib/model_type_info").ModelTypeInfo} meta
  */
 const prepareForUpload = async (data, meta) => {
-  data = Object.assign({}, data);
+  data = Object.assign(
+    {},
+    pick(
+      data,
+      Object.keys(data).filter((e) => data[e] !== undefined)
+    )
+  );
   for (let key in meta) {
     if (hasProp(data, key)) {
+      if (!meta[key]) console.warn("Missing meta for " + key);
       switch (meta[key].type) {
         case "datetime":
         case "date":
@@ -149,12 +175,17 @@ const prepareForUpload = async (data, meta) => {
           data[key] = await Promise.all(
             data[key]?.map?.(
               async (e) =>
-                await prepareForUpload({ value: e }, { value: meta.arrayType })
+                (
+                  await prepareForUpload(
+                    { value: e },
+                    { value: meta[key].arrayType }
+                  )
+                ).value
             )
           );
           break;
         case "object":
-          data[key] = await prepareForUpload(data[key], meta.objectType);
+          data[key] = await prepareForUpload(data[key], meta[key].objectType);
           break;
       }
     }
@@ -185,12 +216,14 @@ const prepareForRender = (data, meta) => {
           data[key] = TIME(data[key]);
           break;
         case "array":
-          data[key] = data[key]?.map?.((e) =>
-            prepareForRender({ value: e }, { value: meta.arrayType })
+          data[key] = data[key]?.map?.(
+            (e) =>
+              prepareForRender({ value: e }, { value: meta[key].arrayType })
+                .value
           );
           break;
         case "object":
-          data[key] = prepareForRender(data[key], meta.objectType);
+          data[key] = prepareForRender(data[key], meta[key].objectType);
           break;
       }
     }

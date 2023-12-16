@@ -1,4 +1,7 @@
+import isServerSide from "@/utils/is_server_side";
+
 const itemStore = [];
+isServerSide || (window.itemStore = itemStore);
 /**
  *
  * @param {import("firebase/firestore").DocumentReference} ref

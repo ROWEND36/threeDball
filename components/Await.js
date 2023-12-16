@@ -20,6 +20,14 @@ export default function Await({
       </Typography>
     );
   } else {
-    return resolved === undefined ? <Skeleton>{children}</Skeleton> : children;
+    return resolved === undefined ? (
+      <Skeleton>
+        <div style={{ display: "inline", visibility: "hidden" }}>
+          {children}
+        </div>
+      </Skeleton>
+    ) : (
+      children
+    );
   }
 }

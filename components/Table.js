@@ -23,6 +23,13 @@ const borderSpacings = [
   "border-spacing-y-4",
   "border-spacing-y-5",
 ];
+
+/**
+ *
+ * @param {Object} props
+ * @param {Array<TableRenderHook>} props.renderHooks
+ * @returns
+ */
 export default function Table({
   data,
   rows = Array.isArray(data) ? data.length : 0,
@@ -33,7 +40,7 @@ export default function Table({
   scrollable,
   headerClass = "border-b text-left",
   bodyClass = "leading-relaxed",
-  minRows = 5,
+  minRows = 0,
   rowProps,
   rowSpacing = 0,
   onClickRow,
@@ -47,9 +54,6 @@ export default function Table({
       className={`${className} ${
         rowSpacing > 0 ? "border-separate" : "border-collapse"
       } ${borderSpacings[rowSpacing]}`}
-      style={{
-        minHeight: minRows + "em",
-      }}
     >
       <thead className={headerClass}>
         <tr>
@@ -62,31 +66,47 @@ export default function Table({
         {loading ? (
           <tr>
             <td colSpan={100} className="w-full py-3">
-              <LoaderAnimation small />
+              <div className="max-w-[95vw]">
+                <LoaderAnimation small />
+              </div>
             </td>
           </tr>
         ) : rows === 0 ? (
           <tr>
             <td colSpan={100} className="w-full py-16 text-center">
-              <Typography color="text.disabled">Nothing to display</Typography>
+              <div className="max-w-[95vw]">
+                <Typography color="text.disabled">
+                  Nothing to display
+                </Typography>
+              </div>
             </td>
           </tr>
         ) : (
-          range(rows).map((row) => (
+          range(Math.max(rows, minRows)).map((row) => (
             <Box
               as="tr"
               key={row}
               onClick={
-                onClickRow
-                  ? (e) => onClickRow(e, row)
-                  : setSelected
-                  ? () => setSelected(selected === row ? -1 : row)
+                onClickRow || setSelected
+                  ? (e) => {
+                      shouldIgnoreClick(e) ||
+                        (onClickRow
+                          ? onClickRow(e, row)
+                          : setSelected(selected === row ? -1 : row));
+                    }
                   : null
               }
               {...(typeof rowProps === "function" ? rowProps(row) : {})}
             >
               {range(cols).map((j) =>
-                callHooks(data, row, j, [], {}, renderHooks)
+                callHooks(
+                  row >= rows ? null : data,
+                  row,
+                  j,
+                  [],
+                  {},
+                  renderHooks
+                )
               )}
             </Box>
           ))
@@ -107,6 +127,7 @@ export const TableHeader = (props) => (
     className="flex justify-between mb-4 items-baseline"
   />
 );
+
 export const TableButton = ({ onClick, ...props }) => {
   const [selected] = useContext(TableContext);
   return (
@@ -118,6 +139,17 @@ export const TableButton = ({ onClick, ...props }) => {
       onClick={(e) => onClick(selected, e)}
     />
   );
+};
+
+const shouldIgnoreClick = (e) => {
+  let m = e.target;
+  while (m && m !== e.currentTarget) {
+    if (/^(?:BUTTON|A)$/.test(m.tagName)) {
+      return true;
+    }
+    m = m.parentElement;
+  }
+  return false;
 };
 
 /**
@@ -145,7 +177,7 @@ const toReactComponent = (e) => {
 const renderTableCell = ({ data, row, col, classes, attrs }) => {
   return row >= 0 ? (
     <td key={row + ";" + col} className={classes.join(" ")} {...attrs}>
-      {toReactComponent(Array.isArray(data) ? data[row][col] : data)}
+      {toReactComponent(Array.isArray(data?.[row]) ? data[row][col] : data)}
     </td>
   ) : (
     <th key={col} className={classes.join(" ")} {...attrs}>

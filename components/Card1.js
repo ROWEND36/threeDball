@@ -31,10 +31,8 @@ function Card1Wrapper({ expand, boxClass, onClose, children, ...props }) {
   const ref = useRef();
   useEffect(() => {
     if (expand) {
-      console.log("showing");
       show(ref);
       return onShow((_ref) => {
-        console.log("hiding");
         if (ref !== _ref) onClose();
       });
     }

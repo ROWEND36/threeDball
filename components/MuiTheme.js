@@ -31,11 +31,6 @@ const MuiTheme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         borderWidth: 1,
-        root: ({ theme }) => ({
-          "&:hover:not(.Mui-focused) .MuiOutlinedInput-notchedOutline": {
-            borderColor: theme.palette.primary.dark,
-          },
-        }),
       },
     },
   },
@@ -45,6 +40,7 @@ const MuiTheme = createTheme({
       main: tailWindTheme.colors.primary,
       dark: tailWindTheme.colors.primaryDark,
       hover: "rgba(255, 255, 255, 0.3)",
+      contrastText: "rgba(255, 255, 255, 1)",
     },
     secondary: {
       main: tailWindTheme.colors.secondary,
@@ -114,7 +110,6 @@ const MuiTheme = createTheme({
       md: 768,
       lg: 1024,
       xl: 1280,
-      "2xl": 1536,
     },
   },
   // Use tailwind shadows instead

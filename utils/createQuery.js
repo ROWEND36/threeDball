@@ -25,6 +25,7 @@ const baseScore = (query, text) =>
 const byLength = (a, b) => b.length - a.length || a.localeCompare(b);
 
 const maxLength = (size) => (e) => e.length < size;
+const minLength = (size) => (e) => e.length >= size;
 /**
  *
  * @param {String} text
@@ -33,7 +34,8 @@ const maxLength = (size) => (e) => e.length < size;
 export function parseQuery(text) {
   let exactMatch = text
     .toLowerCase()
-    .split(/[ ,.]/)
+    .replace(/[^a-z0-9 , .@]/g, "")
+    .split(/[ ,.@]/)
     .filter(Boolean)
     .sort(byLength)
     .filter(uniq);
@@ -52,6 +54,7 @@ export function parseQuery(text) {
     .sort(byLength)
     .filter(uniq)
     .filter(maxLength(10))
+    .filter(minLength(5))
     .filter(notIn(prev));
   Array.prototype.push.apply(prev, oneLetterOff);
 
@@ -61,6 +64,7 @@ export function parseQuery(text) {
     .sort(byLength)
     .filter(uniq)
     .filter(maxLength(10))
+    .filter(minLength(7))
     .filter(notIn(prev));
   Array.prototype.push.apply(prev, twoLettersOff);
 
@@ -75,7 +79,6 @@ export function parseQuery(text) {
         .filter(uniq)
         .filter(notIn(prev))
     );
-
   return [exactMatch, oneLetterOff, twoLettersOff, letterSegments];
 }
 /**

@@ -43,8 +43,8 @@ function EventsView({ date = new Date() }) {
   const currentYear = date.getFullYear();
   return (
     <Card1
-      className="w-96 mx-2 flex-grow-0 my-2"
-      boxClass="h-full px-6 py-5 2xl:py-6 max-h-96 overflow-y-auto"
+      className="w-96 mx-2 flex-grow-0 my-6 scroll-primary py-2"
+      boxClass="h-full px-6 py-5 2xl:py-6 max-h-80 overflow-y-auto"
       sx={{ backgroundColor: "primary.dark", color: "white" }}
     >
       <Typography variant="h5">Upcoming Events</Typography>
@@ -147,7 +147,7 @@ const EventView = ({ date, title, scope, isSelected }) => {
   const toScopeString = (scope) => {
     let mask = Object.keys(scope).filter((e) => scope[e]);
     return mask.length === 0
-      ? ""
+      ? "No users selected"
       : "All " +
           (mask.length === 1
             ? mask[0]
@@ -155,50 +155,51 @@ const EventView = ({ date, title, scope, isSelected }) => {
   };
   return (
     <Box
-      className={`flex rounded px-4 items-center my-2`}
+      className={`flex rounded px-4 items-center my-2 pb-4`}
       sx={{
         backgroundColor: isSelected ? "primary.light" : "transparent",
         py: isSelected ? 1 : 0,
       }}
     >
       <Box
-        className={`text-center w-16 flex-shrink-0 mr-4 py-2 rounded-md flex flex-col items-center justify-center`}
+        className={`text-center w-16 flex-shrink-0 mr-4 mt-2 py-2 rounded-md flex flex-col items-center justify-center`}
         sx={{
           backgroundColor: isSelected ? "transparent" : "primary.light",
         }}
       >
-        <Typography
-          paragraph
-          className="font-10"
-          sx={{ color: "primary.dark" }}
-        >
+        <Typography paragraph sx={{ color: "primary.dark", my: 0 }}>
           {day}
         </Typography>
-        <p className="font-32b leading-none">{monthDate}</p>
+        <Typography className="font-bold leading-none my-0" variant="h3">
+          {monthDate}
+        </Typography>
       </Box>
-      <div className="w-0 flex-grow">
-        <h4 className="text-white leading-normal w-auto overflow-hidden whitespace-nowrap text-ellipsis">
-          {title}
-        </h4>
+      <div className="w-0 flex-grow mt-2">
         <Typography
-          className={`font-12 `}
+          variant="h4"
+          className="font-thin text-white leading-normal w-auto overflow-hidden whitespace-nowrap text-ellipsis"
+        >
+          {title}
+        </Typography>
+        <Typography
+          variant="body2"
+          className={`mt-0 mb-2`}
           sx={{
             color: isSelected ? "primary.dark" : "text.disabled",
           }}
         >
           {toScopeString(scope)}
         </Typography>
-        <p>
-          <Typography
-            className="rounded p-0.5"
-            sx={{
-              backgroundColor: isSelected ? "white" : "primary.light",
-              color: isSelected ? "primary.dark" : null,
-            }}
-          >
-            {time}
-          </Typography>
-        </p>
+        <Typography
+          component="span"
+          className="rounded p-1"
+          sx={{
+            backgroundColor: isSelected ? "white" : "primary.light",
+            color: isSelected ? "primary.dark" : null,
+          }}
+        >
+          {time}
+        </Typography>
       </div>
     </Box>
   );

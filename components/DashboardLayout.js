@@ -17,15 +17,15 @@ const DashboardLayout = ({ renderChild = _renderChild, tabs }) => {
   );
 };
 
-const _renderChild = function (tab, tabs) {
-  const Component = (
-    tabs.find((e) => tab === (e.id ?? e.name.toLowerCase())) ?? tabs[0]
-  ).component;
+const _renderChild = function (tab) {
+  const Component = tab.component;
   return <Component />;
 };
 
 function ChooseLayout({ renderChild, tabs }) {
   const tab = useActiveTab(tabs);
-  return renderChild(tab, tabs);
+  return renderChild(
+    tabs.find((e) => tab === (e.id ?? e.name.toLowerCase())) ?? tabs[0]
+  );
 }
 export default DashboardLayout;

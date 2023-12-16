@@ -1,5 +1,12 @@
 import { useMemo } from "react";
 import { useState, useEffect, useRef } from "react";
+/**
+ * @template  T
+ *
+ * @param {() => Promise<T>} createPromise
+ * @param {Array<any>} deps
+ * @returns {T|undefined}
+ */
 export default function usePromise(createPromise, deps) {
   const [, setData] = useState({});
   const ref = useRef({});
@@ -15,14 +22,20 @@ export default function usePromise(createPromise, deps) {
     function () {
       let stale = false;
       const promise = cb();
-      promise.then(function (data) {
-        if (!stale) {
-          if (data !== ref.current) {
-            ref.current = data;
-            setData({});
+      if (!promise) return;
+      promise.then(
+        function (data) {
+          if (!stale) {
+            if (data !== ref.current) {
+              ref.current = data;
+              setData({});
+            }
           }
+        },
+        function (e) {
+          console.error(e);
         }
-      });
+      );
       return function () {
         stale = true;
       };

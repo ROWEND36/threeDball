@@ -5,7 +5,6 @@ export default function useInterval(update, delay) {
   const skip = useRef(false);
   update = useStable(update);
   useEffect(() => {
-    console.log("start");
     const k = setInterval(() => {
       if (!skip.current) update();
       else skip.current = false;

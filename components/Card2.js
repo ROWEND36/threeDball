@@ -48,7 +48,7 @@ export function Card2Wrapper({ color = "transparent", ...props }) {
     <Template
       props={props}
       as={Paper}
-      className="flex justify-between mx-2 basis-48 flex-grow"
+      className="items-center flex justify-between mx-2 basis-48 flex-grow"
       elevation={2}
       sx={{
         backgroundColor: color,

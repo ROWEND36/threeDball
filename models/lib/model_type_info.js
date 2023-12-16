@@ -55,7 +55,13 @@ function inferType(value, key) {
       );
   }
 }
-
+export function guessMeta(value) {
+  try {
+    return _getModelPropInfo("?", value ?? "", {}, "?");
+  } catch (e) {
+    return null;
+  }
+}
 /**
  *
  * @param {string} key
@@ -127,11 +133,10 @@ function _getModelTypeInfo(template, meta, path) {
   if (meta) {
     propNames.push(...Object.keys(meta).filter((e) => !propNames.includes(e)));
   }
-
   return propNames.reduce((acc, key) => {
     /** @type {Partial<ModelPropInfo>} */
     acc[key] =
-      key[0] === "!"
+      key[0] === "!" || typeof template?.[key] === "function"
         ? meta[key]
         : _getModelPropInfo(
             key,

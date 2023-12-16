@@ -4,7 +4,6 @@ export default function FramerParallaxLayer({
 }) {
   // const { scrollY } = useScroll();
   // const y = useTransform(scrollY, (scrollY) => -scrollY * multiplier);
-  // useMotionValueEvent(scrollY, "change", (e) => console.log(e));
   return (
     <div
       style={{

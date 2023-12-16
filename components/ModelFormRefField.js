@@ -13,6 +13,7 @@ import useIterator from "@/utils/useIterator";
 import {
   Autocomplete,
   Box,
+  Button,
   CircularProgress,
   IconButton,
   LinearProgress,
@@ -20,9 +21,10 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { _searchValue, _id } from "./SearchInput";
 import ModelItemPreview, { MODEL_ITEM_PREVIEW } from "./ModelItemPreview";
 import InfiniteScroll from "react-infinite-scroll-component";
-import { useDebounce, useIntersection } from "react-use";
+import { useDebounce, useIntersection, useUpdate } from "react-use";
 import { Item, USES_EXACT_IDS } from "@/models/lib/model";
 import { IndexEntry } from "@/models/search_index";
 import ModelFormDialog from "./ModelFormDialog";
@@ -31,11 +33,16 @@ import Template from "./Template";
 import delay from "@/utils/delay";
 import { ItemDoesNotExist, checkError } from "@/models/lib/errors";
 import useStable from "@/utils/useStable";
-import { AddCircle, CloseCircle } from "iconsax-react";
+import { Add, AddCircle, Additem, BoxAdd, CloseCircle } from "iconsax-react";
 import { useOnCreateItem } from "./ModelForm";
 import { getDefaultValue } from "../models/lib/model_type_info";
 import { noop } from "@/utils/none";
 import useLogger from "@/utils/useLogger";
+import typeOf from "@/utils/typeof";
+import { getItemFromStore } from "@/models/lib/item_store";
+import Spacer from "./Spacer";
+
+export const SKIP_PICKER = "!skip-preview";
 /**
  * @type {import("react").Context<import("@/utils/useIterator").UseIterator<import("@/models/lib/model").Item>>}
  */
@@ -50,47 +57,10 @@ const iteratorContext = createContext();
 export default function ModelFormRefField(props) {
   return <FormField as={RefField} {...props} />;
 }
-const testIterator = async function* (i = 0) {
-  while (true) {
-    i += 10;
-    await delay(6000);
-    yield [
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-      "Helllo " + ++i,
-    ];
-  }
-};
 async function* asyncIteratorOf(func) {
   yield* await func();
 }
 
-const _id = (e) =>
-  e instanceof IndexEntry ? e.getItemId() : e instanceof Item ? e.id() : e;
-
-const _searchValue = (e) =>
-  e instanceof IndexEntry
-    ? e.tokens
-    : e instanceof Item && e._isLoaded && e.model().Meta[MODEL_ITEM_PREVIEW]
-    ? Object.values(e.model().Meta[MODEL_ITEM_PREVIEW](e)).join(" ")
-    : typeof e === "string"
-    ? e
-    : "";
 /**
  * @param {Object} params
  * @param {*} params.inputProps
@@ -113,13 +83,15 @@ function RefField({
   ...props
 }) {
   const allowCreate = !meta.refModel.Meta[USES_EXACT_IDS];
+  const skipPicker = !!meta[SKIP_PICKER];
   const newItem = useMemo(
     () => allowCreate && meta.refModel.create(),
     [meta, allowCreate]
   );
-  const [open, setOpen] = useState(false);
 
-  const query = useMemo(
+  const [newItemModalOpen, setNewItemModalOpen] = useState(skipPicker);
+
+  const pickerQuery = useMemo(
     () =>
       meta.pickRefQuery === true ? meta.refModel.all() : meta.pickRefQuery,
     [meta]
@@ -129,30 +101,46 @@ function RefField({
     onChange({ target: { value: _id(e) } });
   });
 
-  useLogger({ id, value, open, query });
   const activeItem = useMemo(
     () =>
       value &&
-      (value === newItem?.id?.() ? newItem : meta.refModel.item(value)),
+      (newItem && value === newItem.id()
+        ? newItem
+        : getItemFromStore(meta.refModel.ref(value)) ||
+          meta.refModel.item(value)),
     [value, meta, newItem]
   );
+  const update = useUpdate();
   const onCreateItem = useOnCreateItem();
   useEffect(() => {
     (async () => {
+      if (!activeItem) return;
       try {
-        if (activeItem === newItem) {
+        if (activeItem.isLocalOnly() && !getItemFromStore(activeItem._ref)) {
           onCreateItem(activeItem);
         } else {
-          await (activeItem && activeItem.load());
+          await activeItem.load();
+          update();
         }
       } catch (e) {
         checkError(e, ItemDoesNotExist);
         setValue(getDefaultValue(meta));
       }
     })();
-  }, [activeItem, newItem, onCreateItem, setValue, meta]);
+  }, [activeItem, onCreateItem, setValue, meta, update]);
+  const stopRefresh = useRef(false);
+  const loaded = (stopRefresh.current =
+    !value ||
+    (activeItem && activeItem._isLoaded) ||
+    (newItemModalOpen && stopRefresh.current));
+  useMemo(() => {
+    if (skipPicker && activeItem && loaded) {
+      newItem.setData(activeItem.data());
+    }
+  }, [skipPicker, activeItem, newItem, loaded]);
+  useLogger({ value, activeItem, loaded });
   return (
-    <div className="flex items-end">
+    <div className="flex items-end flex-wrap justify-end">
       <input
         name={name}
         value={value}
@@ -163,44 +151,63 @@ function RefField({
         form={props?.inputProps?.form}
         style={{ padding: 0, maxWidth: 0, border: "none" }}
       />
-      {query ? (
-        <PickRef
-          {...{
-            value,
-            disabled,
-            setValue,
-            activePreview: activeItem,
-            query,
-            props,
-          }}
-        />
-      ) : (
+      {pickerQuery ? (
         <>
-          <ModelItemPreview item={activeItem} {...props} />
+          <PickRef
+            {...{
+              value,
+              disabled,
+              setValue,
+              activePreview: activeItem,
+              query: pickerQuery,
+              props,
+            }}
+          />
+          <Spacer />
+        </>
+      ) : (
+        <div className="flex flex-grow h-10 items-center">
+          <ModelItemPreview
+            item={activeItem}
+            {...props}
+            sx={{ ...props.sx, minWidth: 0, flexGrow: 1 }}
+          />
           {!disabled ? (
-            <IconButton>
+            <IconButton onClick={() => setValue("")}>
               <CloseCircle />
             </IconButton>
           ) : null}
-        </>
+        </div>
       )}
       {!disabled && allowCreate ? (
-        <>
-          <ModelFormDialog
-            edit={newItem}
-            model={meta.refModel}
-            noSave
-            onSubmit={(data) => {
-              newItem.setData(data);
-              setValue(newItem.id());
-            }}
-            isOpen={open}
-            onClose={() => setOpen(false)}
-          />
-          <IconButton onClick={() => setOpen(true)}>
-            <AddCircle />
-          </IconButton>
-        </>
+        newItemModalOpen ? (
+          loaded ? (
+            <ModelFormDialog
+              edit={newItem}
+              key={loaded}
+              model={meta.refModel}
+              noSave
+              onSubmit={(data) => {
+                newItem.setData(data);
+                setValue(newItem.id());
+              }}
+              closeOnSubmit
+              isOpen={newItemModalOpen}
+              onClose={() => setNewItemModalOpen(false)}
+            />
+          ) : (
+            <CircularProgress />
+          )
+        ) : (
+          <Button
+            variant="outlined"
+            size="small"
+            sx={{ mr: 2 }}
+            onClick={() => setNewItemModalOpen(true)}
+          >
+            New <Add className="ml-1" />
+          </Button>
+        )
       ) : null}
     </div>
   );
@@ -249,7 +256,7 @@ function PickRef({ value, disabled, setValue, activePreview, query, props }) {
   );
   const iterator = useIterator(resultIterator);
   const { value: results, loading } = iterator;
-  const active = results.find((e) => value === _id(e)) ?? null;
+  const activeResult = results.find((e) => value === _id(e)) ?? null;
   const filterable = useMemo(() => results.some(_searchValue), [results]);
   return (
     <iteratorContext.Provider value={iterator}>
@@ -265,7 +272,7 @@ function PickRef({ value, disabled, setValue, activePreview, query, props }) {
         )}
         // {...{ groupBy, getOptionLabel, renderGroup }}
         options={results}
-        value={active}
+        value={activeResult}
         onChange={(_, e) => setValue(e)}
         getOptionLabel={() => ""}
         selectOnFocus

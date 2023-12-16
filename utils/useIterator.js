@@ -61,6 +61,7 @@ export default function useIterator(iterator) {
           value: results.value.concat(value ?? []),
         });
     } catch (e) {
+      console.error(e);
       if (isRefreshStillValid(x))
         setResults({
           done: false,

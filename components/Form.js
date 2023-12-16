@@ -369,7 +369,12 @@ export function FormSubmit({ name, disabled, ...props }) {
 export function FormErrors({ lines = 2 }) {
   const { showErrors, getErrorMessages, handler } = useContext(FormContext);
   return showErrors ? (
-    <Typography paragraph className="text-error">
+    <Typography
+      paragraph
+      as="div"
+      className="text-error"
+      sx={{ display: "block", width: "100%" }}
+    >
       {handler.error ? handler.error.message : null}
       {getErrorMessages()
         .split("\n")

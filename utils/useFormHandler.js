@@ -11,11 +11,11 @@ export default function useFormHandler(defaults = {}, cb) {
 
 class FormHandler {
   constructor(data, setData, cb, error, setError) {
-    this.data = data;
     this.setData = setData;
     this.error = error;
     this.setError = setError;
     this.cb = cb;
+    this.data = {...data};
   }
   _update(data = {}) {
     this.data = { ...this.data, ...data };

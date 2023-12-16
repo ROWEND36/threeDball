@@ -3,7 +3,8 @@ import { Avatar, Box, Typography } from "@mui/material";
 import Image from "next/image";
 import { Item } from "../models/lib/model";
 import Template from "./Template";
-import { ItemDoesNotExist } from "@/models/lib/errors";
+import { ItemDoesNotExist, checkError } from "@/models/lib/errors";
+import { getItemFromStore } from "@/models/lib/item_store";
 
 /**
  * @typedef {{
@@ -20,15 +21,24 @@ export const MODEL_ITEM_PREVIEW = "!model-item-preview";
  * @param {import("../models/lib/model").Item} props.item
  */
 export default function ModelItemPreview({ item, ...props }) {
+  // return <div {...props}>{JSON.stringify(item ?? "nothing")}</div>;
   /**@type {import("../models/lib/model").Model}*/
   const { title, description, image, avatar } =
     usePromise(async () => {
       if (item instanceof Item) {
         if (item.model().Meta[MODEL_ITEM_PREVIEW]) {
-          if (!item._isLoaded) await item.load();
-          return item.model().Meta[MODEL_ITEM_PREVIEW](item);
+          item = getItemFromStore(item._ref) ?? item;
+          try {
+            if (!item._isLoaded) await item.load();
+          } catch (e) {
+            checkError(e, ItemDoesNotExist);
+          }
+          if (item._isLoaded)
+            return await item.model().Meta[MODEL_ITEM_PREVIEW](item);
         } else return { title: item.uniqueName() };
-      } else return { title: String(item) };
+      } else {
+        return { title: JSON.stringify(item) };
+      }
     }, [item]) ?? {};
   return (
     <Template as={Box} props={props}>

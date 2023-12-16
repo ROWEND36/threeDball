@@ -43,9 +43,6 @@ export const trackFiles = (ItemClass, props) => {
 export async function onFilesUpdateItem(item, txn, newState, prevState) {
   item[fileProps]?.forEach?.((e) => {
     if (item.didUpdate(e, newState, prevState)) {
-      console.log(
-        "Updating " + e + " from " + prevState[e] + " to " + newState[e]
-      );
       if (prevState[e]) deleteInTxn(txn, prevState[e]);
       if (newState[e]) keepInTxn(txn, newState[e]);
     }

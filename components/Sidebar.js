@@ -15,11 +15,12 @@ import createSubscription from "@/utils/createSubscription";
 import { noop } from "@/utils/none";
 import delay from "@/utils/delay";
 import { useEffect } from "react";
+import useQueryState from "@/utils/useQueryState";
 
 export const [useSidebar, , setSidebar] = createSubscription(noop, false);
 
 export function useActiveTab(tabs) {
-  return useRouter().query["tab"] || tabs[0]?.name?.toLowerCase?.();
+  return useQueryState("tab", tabs[0]?.name?.toLowerCase?.())[0];
 }
 
 export default function Sidebar({ children, isStatic = false, tabs = [] }) {
@@ -32,6 +33,7 @@ export default function Sidebar({ children, isStatic = false, tabs = [] }) {
       onClose={() => setSidebar(false)}
       variant={isStatic ? "permanent" : "temporary"}
       open={isOpen}
+      className="scroll-primary"
       sx={{
         "&>.MuiPaper-root": {
           backgroundColor: "primary.dark",
@@ -40,7 +42,7 @@ export default function Sidebar({ children, isStatic = false, tabs = [] }) {
       }}
     >
       <nav className="text-white w-72 flex-shrink-0 pt-4 pb-8 flex flex-col justify-start h-full">
-        <AppLogo className="block mx-auto relative right-2 mb-16 h-6 w-auto px-4" />
+        <AppLogo className="block mx-auto relative right-2 pt-4 pb-8 h-20 mt-8 mb-4 w-auto px-4" />
         <div className="flex flex-col flex-grow overflow-auto pl-8 pr-6">
           {tabs.map(({ icon, name, id = name.toLowerCase() }) =>
             id === "settings" ? null : (
@@ -55,13 +57,18 @@ export default function Sidebar({ children, isStatic = false, tabs = [] }) {
             )
           )}
           <Spacer className="h-8 flex-shrink-0" />
-          <TabLink
-            isSelected={"settings" === selected}
-            icon={Setting}
-            href={"?tab=settings"}
-          >
-            Settings
-          </TabLink>
+          {tabs.map(({ icon, name, id = name.toLowerCase() }) =>
+            id === "settings" ? (
+              <TabLink
+                key={name}
+                isSelected={id === selected}
+                icon={icon}
+                href={`?tab=${encodeURIComponent(id)}`}
+              >
+                Settings
+              </TabLink>
+            ) : null
+          )}
           <TabLink
             isActivated
             icon={Logout}

@@ -1,14 +1,15 @@
-import { SearchIndex } from "@/models/search_index";
 import { parseQuery } from "@/utils/createQuery";
 import hasProp from "@/utils/hasProp";
 import uniq from "@/utils/uniq";
+
 /**
- * @typedef {import("../models/lib/counted_item").CountedItem} CountedItem
+ * @typedef {import("./counted_item").CountedItem} CountedItem
  */
 
 const _id = (item) => item.uniqueName().replace(/\//g, "^");
 const searchIndexProps = Symbol("searchIndexer");
 async function updateInTxn(txn, item, newState) {
+  const SearchIndex = (await import("@/models/search_index")).SearchIndex;
   if (item[searchIndexProps]) {
     const { props, indexer } = item[searchIndexProps];
     if (props.some((e) => item.didUpdate(e))) {
@@ -21,12 +22,15 @@ async function updateInTxn(txn, item, newState) {
           }
         })
       );
-      const index = SearchIndex.item(_id(item), true);
-      return index.set(await indexer(item, x), txn);
+      return SearchIndex.getOrCreate(_id(item), async (index, txn) => {
+        console.trace("creating search index");
+        return index.set(await indexer(index, x), txn);
+      });
     }
   }
 }
 async function deleteInTxn(txn, item) {
+  const SearchIndex = (await import("@/models/search_index")).SearchIndex;
   if (item[searchIndexProps]) return SearchIndex.item(_id(item)).delete(txn);
 }
 
@@ -39,18 +43,8 @@ async function deleteInTxn(txn, item) {
  */
 export function createIndexEntry(props, item, state, prev) {
   return {
-    title: prev ? prev.title : "",
-    description: prev ? prev.description : "",
-    avatar: prev ? prev.avatar : "",
-    image: prev ? prev.image : "",
-    filters: [item.model()._ref.path]
-      .concat(prev ? prev.filters : [])
-      .filter(uniq),
-    tokens: props
-      .map((e) => String(state[e] ?? ""))
-      .filter(Boolean)
-      .map(parseQuery)
-      .flat(2)
+    tokens: parseQuery(props.map((e) => String(state[e] ?? "")).join(" "))
+      .flat()
       .concat(prev ? prev.tokens : [])
       .filter(uniq),
   };
